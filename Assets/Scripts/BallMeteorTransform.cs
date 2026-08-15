@@ -6,6 +6,8 @@ using UnityEngine.Events;
 // trail on, particles on, material and mesh swapped to a tumbling rock look, optional
 // scale pulse. Fires OnMeteorTransform so other scripts (obstacle break VFX, camera shake,
 // audio) can react without needing a direct reference to this component.
+// Can also be triggered externally via TriggerMeteor() (e.g. MeteorGateController's
+// untouched-obstacle-streak rule or a forced-trigger ring), not just by fall distance.
 [RequireComponent(typeof(SphereCollider))]
 public class BallMeteorTransform : MonoBehaviour
 {
@@ -57,6 +59,7 @@ public class BallMeteorTransform : MonoBehaviour
 
     private Mesh normalMesh;
     private Vector3 normalMeshVisualScale;
+    private Material originalMaterial;
     private Vector3 spinAxis;
     private float spinSpeed;
 
@@ -69,6 +72,11 @@ public class BallMeteorTransform : MonoBehaviour
         {
             normalMesh = meshFilter.sharedMesh;
             normalMeshVisualScale = meshFilter.transform.localScale;
+        }
+
+        if (meshRenderer != null)
+        {
+            originalMaterial = meshRenderer.material;
         }
 
         if (normalPhysicMaterial != null)
@@ -112,6 +120,13 @@ public class BallMeteorTransform : MonoBehaviour
         }
     }
 
+    // External entry point for non-fall-distance triggers (e.g. MeteorGateController's
+    // untouched-obstacle-streak rule or a forced-trigger ring). No-ops if already a meteor.
+    public void TriggerMeteor()
+    {
+        if (!IsMeteor) BeginTransform();
+    }
+
     private void BeginTransform()
     {
         IsMeteor = true;
@@ -144,12 +159,18 @@ public class BallMeteorTransform : MonoBehaviour
         OnMeteorTransform?.Invoke();
     }
 
-    // Lets the revive beat (later in the chain) reset the ball back to normal.
-    public void ResetToNormal(Material normalMaterial)
+    // Reverts the ball back to its normal (pre-meteor) look and physics, using the
+    // material/mesh cached at Awake - callers don't need to track/supply their own
+    // reference to the original material.
+    public void ResetToNormal()
     {
         IsMeteor = false;
+        // Re-arm the fall-distance trigger from here, not the original spawn height - otherwise
+        // a ball reverted far below its spawn point would immediately re-trigger next frame
+        // (fallen already exceeds fallDistanceToTransform relative to the old startY).
+        startY = transform.position.y;
         transform.localScale = baseScale;
-        if (normalMaterial != null && meshRenderer != null) meshRenderer.material = normalMaterial;
+        if (originalMaterial != null && meshRenderer != null) meshRenderer.material = originalMaterial;
         if (meshFilter != null && normalMesh != null) meshFilter.sharedMesh = normalMesh;
         if (meshFilter != null)
         {

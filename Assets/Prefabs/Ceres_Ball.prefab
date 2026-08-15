@@ -14510,7 +14510,7 @@ ParticleSystemRenderer:
   m_RenderingLayerMask: 4294967295
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 2100000, guid: 4f2e6c00c35c1d94abf15453d511cadc, type: 2}
+  - {fileID: 2100000, guid: d72562a6386124e4184d8dfb3d2862dc, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0
@@ -24515,3 +24515,4 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   breakVfxPrefab: {fileID: 579029510932139575, guid: ab6cbcdab5d89d343a890bba4200df53, type: 3}
   cameraShakeTarget: {fileID: 0}
+  maxBreaksBeforeRevert: 3

@@ -13,6 +13,14 @@ using UnityEngine;
 // broke an obstacle, the ball's velocity is restored to the pre-impact value right after -
 // the one-step deceleration from the resolved contact never has a frame to be visible, so the
 // meteor reads as smashing straight through without slowing down.
+//
+// The meteor can break up to maxBreaksBeforeRevert obstacles (each one broken normally).
+// Once that quota is used up, it keeps its meteor look/state - it doesn't revert on the
+// break itself. Reverting only happens on the NEXT obstacle contact after the quota is
+// spent: that (maxBreaksBeforeRevert+1)th obstacle is NOT broken (the meteor is "out of
+// breaks"), and the hit instead ends the meteor phase (BallMeteorTransform.ResetToNormal()).
+// The counter resets every time a new meteor phase begins (OnMeteorTransform), regardless
+// of what triggered it - including a fresh meteor transform started right after a revert.
 [RequireComponent(typeof(BallMeteorTransform))]
 [RequireComponent(typeof(Rigidbody))]
 public class MeteorObstacleBreaker : MonoBehaviour
@@ -23,14 +31,29 @@ public class MeteorObstacleBreaker : MonoBehaviour
     [Tooltip("Camera to give a subtle shake to on every obstacle break.")]
     [SerializeField] private CameraFollow cameraShakeTarget;
 
+    [Tooltip("Number of obstacles the meteor can break. The next obstacle hit after that quota is used up isn't broken - it reverts the ball to normal instead.")]
+    [SerializeField] private int maxBreaksBeforeRevert = 3;
+
     private BallMeteorTransform meteorState;
     private Rigidbody rb;
     private Vector3 preStepVelocity;
+    private int breakCount;
 
     private void Awake()
     {
         meteorState = GetComponent<BallMeteorTransform>();
         rb = GetComponent<Rigidbody>();
+        meteorState.OnMeteorTransform.AddListener(OnMeteorTransformStarted);
+    }
+
+    private void OnDestroy()
+    {
+        meteorState.OnMeteorTransform.RemoveListener(OnMeteorTransformStarted);
+    }
+
+    private void OnMeteorTransformStarted()
+    {
+        breakCount = 0;
     }
 
     private void FixedUpdate()
@@ -65,6 +88,16 @@ public class MeteorObstacleBreaker : MonoBehaviour
         if (!hitObject.CompareTag("Obstacle")) return;
         if (!hitObject.activeInHierarchy) return;
 
+        if (breakCount >= maxBreaksBeforeRevert)
+        {
+            // Out of breaks - this obstacle stays intact, and this hit is what ends the
+            // meteor phase instead. Physics resolves this contact normally (the meteor's
+            // zero-bounce physic material is still in effect for this one impact frame),
+            // so it reads as the meteor running out of steam and thudding back to normal.
+            meteorState.ResetToNormal();
+            return;
+        }
+
         Vector3 contactPoint = hitCollider.ClosestPoint(transform.position);
 
         if (breakVfxPrefab != null)
@@ -83,5 +116,10 @@ public class MeteorObstacleBreaker : MonoBehaviour
         // Undo this step's contact-induced deceleration so the meteor's fall speed never dips.
         rb.velocity = preStepVelocity;
         rb.WakeUp();
+
+        // hitObject.SetActive(false) above means any further OnCollisionStay for this same
+        // collider hits the activeInHierarchy guard before ever reaching here, so this only
+        // ever increments once per actual break - no Enter+Stay double-count risk.
+        breakCount++;
     }
 }

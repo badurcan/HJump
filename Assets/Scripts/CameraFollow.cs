@@ -6,8 +6,10 @@ public class CameraFollow : MonoBehaviour
 {
     [SerializeField] private Transform target;
 
-    [Tooltip("If true, camera Y snaps exactly to the ball every frame - true lock-on, no lag even as the ball speeds up. If false, falls back to the damped follow below.")]
+    [Tooltip("If true, camera Y tracks the ball almost instantly (tiny smoothing window below) - reads as a hard lock during normal fast descent, but still absorbs single-frame physics pops (e.g. the harder-than-usual first landing) instead of visibly snapping. If false, falls back to the slower damped follow below.")]
     [SerializeField] private bool hardLock = true;
+    [Tooltip("Smoothing window used when hardLock is on. Small enough to feel instant while falling, large enough to swallow a one-frame landing pop.")]
+    [SerializeField] private float hardLockSmoothTime = 0.05f;
 
     [Header("Damped follow (only used when hardLock is off)")]
     [SerializeField] private float smoothTime = 0.25f;
@@ -22,7 +24,9 @@ public class CameraFollow : MonoBehaviour
     private float fixedX;
     private float fixedZ;
     private float yOffset;
-    private float velocityY;
+    
+    private float recordLowY;
+private float velocityY;
 
     private float shakeElapsed;
     private float shakeDuration;
@@ -30,13 +34,14 @@ public class CameraFollow : MonoBehaviour
     private float shakeSeedX;
     private float shakeSeedZ;
 
-    private void Start()
+private void Start()
     {
         fixedX = transform.position.x;
         fixedZ = transform.position.z;
         if (target != null)
         {
             yOffset = transform.position.y - target.position.y;
+            recordLowY = target.position.y;
         }
     }
 
@@ -51,12 +56,23 @@ public class CameraFollow : MonoBehaviour
         shakeSeedZ = Random.value * 100f;
     }
 
-    private void LateUpdate()
+private void LateUpdate()
     {
         if (target == null) return;
 
-        float desiredY = target.position.y + yOffset;
-        float baseY = hardLock ? desiredY : Mathf.SmoothDamp(transform.position.y, desiredY, ref velocityY, smoothTime, maxDropSpeed);
+        // Only ever follow the ball's deepest point reached so far (its record-low Y).
+        // The idle physical bounce (BallPhysicalBounce) makes the ball's raw Y oscillate
+        // upward briefly on every hop - if the camera tracked that directly it would jitter
+        // up and down with each bounce. Tracking the running minimum instead means the
+        // camera only ever moves forward (down) as real progress down the tower happens,
+        // and ignores the bounce entirely.
+        if (target.position.y < recordLowY)
+        {
+            recordLowY = target.position.y;
+        }
+
+        float desiredY = recordLowY + yOffset;
+        float baseY = Mathf.SmoothDamp(transform.position.y, desiredY, ref velocityY, hardLock ? hardLockSmoothTime : smoothTime, maxDropSpeed);
 
         Vector3 shakeOffset = Vector3.zero;
         if (shakeElapsed < shakeDuration)
